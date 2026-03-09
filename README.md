@@ -42,7 +42,7 @@ This pipeline demonstrates that machine learning can reproduce physically meanin
 
 **File**
 
-ThermalGPT_QB=12.py
+ThermalGPT.py
 
 This script trains a Transformer-based generative model to learn measurement statistics from simulation datasets.
 
