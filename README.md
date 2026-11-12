@@ -82,9 +82,9 @@ Each generated pair of Pauli bases and measurement outcomes produces a **single-
 
 The estimators are averaged over the generated records,
 
-$$
+```math
 \bar\rho_M=\frac{1}{M}\sum_{j=1}^{M}\hat\rho_A^{(j)}.
-$$
+```
 
 The final notebook evaluates the **trace-norm discrepancy** from the maximally mixed two-qubit state, which is the **first moment of the Haar ensemble**:
 
