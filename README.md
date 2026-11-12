@@ -97,7 +97,7 @@ D(M)=\frac{1}{2}\left\|\bar\rho_M-\frac{I_4}{4}\right\|_1,
 
 ![Trace-norm discrepancy versus number of sampled bath bitstrings, reproduced from saved notebook values](assets/trace_distance.png)
 
-*Figure: Trace-norm discrepancy $D(M)$ versus the number $M$ of sampled bath bitstrings (logarithmic axes), reproduced from the values saved in `Classical_Shadows.ipynb`. The discrepancy generally decreases with sample count, reaching approximately **0.031** at $M=10^6$ in this run.*
+*Figure: Trace-norm discrepancy D(M) versus the number M of sampled bath bitstrings (logarithmic axes), reproduced from the values saved in `Classical_Shadows.ipynb`. The discrepancy generally decreases with sample count, reaching approximately **0.031** at $M=10^6$ in this run.*
 
 This result probes **first-moment reconstruction**, not the distance between full quantum-state ensembles. In particular, agreement with $I_4/4$ does **not** establish agreement with higher Haar moments or the complete projected-ensemble distribution. Moreover, finite-sample classical shadow averages need not be positive semidefinite, so $D(M)$ is best interpreted as a **trace-norm diagnostic** rather than necessarily the trace distance between two physical density matrices.
 
