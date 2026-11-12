@@ -74,11 +74,11 @@ These comparisons test the learned measurement distribution directly, before usi
 
 Each generated pair of Pauli bases and measurement outcomes produces a **single-shot classical shadow estimator**,
 
-$$
+```math
 \hat\rho_A^{(j)}
 =\bigotimes_{i=1}^{L_A}
 \frac{I+3(-1)^{b_i^{(j)}}P_i^{(j)}}{2}.
-$$
+```
 
 The estimators are averaged over the generated records,
 
