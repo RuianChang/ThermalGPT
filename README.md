@@ -1,153 +1,132 @@
-# ThermalGPT: Learning Quantum Measurement Statistics with Transformers
+# ThermalGPT: Generative Modeling of Quantum Measurement Data
 
-This repository demonstrates a machine learning pipeline for learning and generating quantum measurement statistics from large-scale physics simulations.
+**A PyTorch Transformer for learning conditional measurement statistics of quantum many-body states, generating new measurement samples, and evaluating them with classical shadows.**
 
-The project explores how a **Transformer-based generative model** can learn conditional measurement distributions of a subsystem given measurement outcomes of its surrounding environment (bath). The generated measurement data can then be used for **classical shadow tomography** to reconstruct subsystem quantum states.
+ThermalGPT is an exploratory project at the intersection of **quantum information**, **generative machine learning**, and **scientific computing**. Inspired by [ShadowGPT](https://arxiv.org/abs/2411.03285), it studies whether a generative model trained on simulated measurements can reproduce the statistics of *measurement-conditioned subsystem states*.
 
-This work combines **machine learning, computational physics, and statistical reconstruction**, and serves as an example of applying ML techniques to physics-based modeling problems.
+The repository provides a compact end-to-end workflow: **conditional Transformer training → measurement generation → statistical benchmarking → classical shadow reconstruction**.
 
----
+## Physical setting and motivation
 
-# Project Overview
+Consider a pure quantum many-body state $|\Psi\rangle$ divided into a subsystem $A$ and a bath $B$. Measuring $B$ in the computational ($Z$) basis gives a bitstring $z_B$ and prepares a conditional state on $A$,
 
-In many-body quantum systems, measurements on the environment collapse the global quantum state into a **projected ensemble**. The resulting subsystem state depends on the measurement outcomes of the surrounding bath.
+$$
+|\psi_A(z_B)\rangle =
+\frac{(I_A\otimes \langle z_B|)|\Psi\rangle}{\sqrt{p(z_B)}},
+\qquad
+p(z_B)=\left\|(I_A\otimes\langle z_B|)|\Psi\rangle\right\|^2.
+$$
 
-The goal of this project is to train a machine learning model to learn the mapping:
+The collection of conditional states, weighted by their measurement probabilities, is called a **projected ensemble**. Such ensembles arise naturally in studies of quantum thermalization and measurement-induced statistics.
 
-bath measurement outcomes → subsystem measurement statistics
+Instead of representing every $|\psi_A(z_B)\rangle$ explicitly, ThermalGPT learns the probability of measurement outcomes on $A$ from the bath outcome and the chosen local Pauli measurement bases:
 
-Once trained, the model can generate new measurement samples that reproduce the correct statistical behavior of the subsystem.
+$$
+p_\theta(\mathbf b\mid z_B,\mathbf P),
+\qquad P_i\in\{X,Y,Z\},\quad b_i\in\{0,1\}.
+$$
 
-These generated measurements can then be used to reconstruct quantum states using **classical shadow tomography**.
+The implementation uses **16 qubits in total**, with **2 subsystem qubits** and **14 bath qubits**. The input measurement records are generated from numerical quantum-state data.
 
----
+## Model and training objective
 
-# Pipeline
+The conditional generative model is implemented from scratch in **PyTorch** using:
 
-The workflow implemented in this repository follows three steps:
+- Learnable embeddings of bath bits, Pauli measurement choices, and positions.
+- A feed-forward network that compresses the bath bitstring into a context token.
+- **4 Transformer blocks**, each with multi-head self-attention (**4 heads**) and feed-forward layers; embedding dimension **128**.
+- Autoregressive prediction of subsystem outcomes, with **CUDA** support for training and inference.
 
-1. **Train a Transformer model** to learn conditional measurement distributions from simulated quantum measurement datasets.
+For the two-qubit subsystem, the learned distribution factorizes as
 
-2. **Generate measurement samples** from the trained model conditioned on bath measurement outcomes.
+$$
+\begin{aligned}
+p_\theta(b_1,b_2\mid z_B,P_1,P_2)
+&=p_\theta(b_1\mid z_B,P_1)\\
+&\quad\times p_\theta(b_2\mid z_B,P_1,b_1,P_2).
+\end{aligned}
+$$
 
-3. **Use classical shadow tomography** on the generated measurement data to reconstruct the subsystem density matrix and compare it with theoretical predictions.
+The model receives only the available prefix at each prediction step. It is trained by minimizing the **average negative log-likelihood** (implemented with `torch.nn.CrossEntropyLoss`):
 
-This pipeline demonstrates that machine learning can reproduce physically meaningful measurement statistics and recover quantum observables.
+$$
+\mathcal L(\theta)=
+-\mathbb E_{(z_B,\mathbf P,\mathbf b)\sim\mathcal D}
+\left[\frac{1}{L_A}\sum_{i=1}^{L_A}
+\log p_\theta(b_i\mid z_B,P_{1:i},b_{1:i-1})\right].
+$$
 
----
+Training uses **AdamW**, a training/validation split, and validation-loss-based early stopping. Separate checkpoints are trained for different bath bit-count sectors $Q_B=\sum_i z_{B,i}$.
 
-# Files in this Repository
+## Generated data and benchmarking
 
-## 1. Transformer Training
+At inference time, the model is conditioned on a bath bitstring $z_B$. For each subsystem qubit, a measurement basis $P_i\in\{X,Y,Z\}$ is sampled uniformly and an outcome $b_i$ is generated from the learned conditional distribution.
 
-**File**
+In `Data_generation_seen_z.ipynb`, a fixed bath outcome is used to generate **180,000 measurement records**. The empirical probabilities for all **9 two-qubit Pauli-basis combinations** are compared with Born-rule probabilities calculated from the reference wavefunction. The notebook reports:
 
-ThermalGPT.py
+- **Total variation distance (TVD)** between generated and reference distributions.
+- **Mean squared error (MSE)** of outcome probabilities.
+- **Kullback–Leibler divergence (KL)** for each measurement basis.
 
-This script trains a Transformer-based generative model to learn measurement statistics from simulation datasets.
+These comparisons test the learned measurement distribution directly, before using it for quantum-state estimation.
 
-The model learns the conditional distribution
+## Classical shadows and trace-norm diagnostic
 
-P(b₁, b₂ | z, P₁, P₂)
+Each generated pair of Pauli bases and measurement outcomes produces a **single-shot classical shadow estimator**,
 
-where
+$$
+\hat\rho_A^{(j)}
+=\bigotimes_{i=1}^{L_A}
+\frac{I+3(-1)^{b_i^{(j)}}P_i^{(j)}}{2}.
+$$
 
-- z : measurement outcomes of bath qubits  
-- P : measurement basis of subsystem qubits (X, Y, Z)  
-- b : measurement outcomes
+The estimators are averaged over the generated records,
 
-Key features:
+$$
+\bar\rho_M=\frac{1}{M}\sum_{j=1}^{M}\hat\rho_A^{(j)}.
+$$
 
-- Transformer architecture implemented in **PyTorch**
-- **GPU acceleration (CUDA)** for efficient training
-- Autoregressive modeling of measurement outcomes
-- Training on large-scale physics simulation datasets
+The final notebook evaluates the **trace-norm discrepancy** from the maximally mixed two-qubit state, which is the **first moment of the Haar ensemble**:
 
-The trained model can predict subsystem measurement outcomes conditioned on bath measurements and measurement bases.
+$$
+D(M)=\frac{1}{2}\left\|\bar\rho_M-\frac{I_4}{4}\right\|_1,
+\qquad \|X\|_1=\operatorname{Tr}\sqrt{X^\dagger X}.
+$$
 
----
+### Numerical result
 
-## 2. Generating Measurement Samples
+![Trace-norm discrepancy versus number of sampled bath bitstrings, reproduced from saved notebook values](assets/trace_distance.png)
 
-**File**
+*Figure: Trace-norm discrepancy $D(M)$ versus the number $M$ of sampled bath bitstrings (logarithmic axes), reproduced from the values saved in `Classical_Shadows.ipynb`. The discrepancy generally decreases with sample count, reaching approximately **0.031** at $M=10^6$ in this run.*
 
-Data_generation_seen_z.ipynb
+This result probes **first-moment reconstruction**, not the distance between full quantum-state ensembles. In particular, agreement with $I_4/4$ does **not** establish agreement with higher Haar moments or the complete projected-ensemble distribution. Moreover, finite-sample classical shadow averages need not be positive semidefinite, so $D(M)$ is best interpreted as a **trace-norm diagnostic** rather than necessarily the trace distance between two physical density matrices.
 
-This notebook demonstrates how to use the trained Transformer model to generate measurement samples.
+**Scope of the experiment.** The final notebook samples bath bitstrings uniformly rather than from their physical Born distribution, and skips charge sectors without a trained model while still normalizing by the original number of draws. As a result, the plot should be viewed as an exploratory diagnostic, not a precision benchmark of the physical projected ensemble or a demonstration of convergence to an exact Haar ensemble.
 
-The workflow includes:
+## Repository contents
 
-- loading the trained Transformer model
-- conditioning on a fixed bath measurement outcome
-- generating subsystem measurement results
-- comparing generated measurement distributions with theoretical predictions
+| File | Purpose |
+| --- | --- |
+| [`ThermalGPT.py`](ThermalGPT.py) | PyTorch model definition, training and validation loops, checkpointing, and conditional sampling. |
+| [`Data_generation_seen_z.ipynb`](Data_generation_seen_z.ipynb) | Generate measurements for a specified bath outcome; compare empirical distributions with reference Born probabilities. |
+| [`Classical_Shadows.ipynb`](Classical_Shadows.ipynb) | Convert generated measurement records into classical shadow estimators and evaluate the first-moment trace-norm diagnostic. |
 
-This step verifies that the learned model correctly reproduces the measurement statistics of the physical system.
+## Tools and skills demonstrated
 
----
+**Machine learning:** PyTorch, Transformer architectures, attention and embeddings, autoregressive generation, cross-entropy optimization, model validation, and GPU/CUDA workflows.
 
-## 3. Classical Shadow Reconstruction
+**Scientific computing:** Python, NumPy, pandas, SciPy, Matplotlib, Jupyter/Google Colab, probability-distribution benchmarking, and numerical linear algebra.
 
-**File**
+**Quantum information:** Measurement-conditioned states, projected ensembles, Born-rule sampling, randomized Pauli measurements, and classical shadow tomography.
 
-Classical_Shadows.ipynb
+### Reproducibility notes
 
-The generated measurement samples are used to perform **classical shadow tomography**.
+This repository currently contains the training and analysis code, but **not** the underlying simulation datasets, thermalized-state files, or trained model checkpoints referenced by the scripts. Some notebook paths point to a local Google Drive environment and must be adapted before running. The saved notebook outputs document the exploratory results shown here.
 
-This notebook:
+## Reference
 
-- reconstructs subsystem density matrices from measurement outcomes
-- compares reconstructed states with theoretical projected states
-- benchmarks results against Haar random ensemble predictions
-
-This demonstrates that machine-learning-generated measurement data can reproduce correct physical observables.
-
----
-
-# Scientific Motivation
-
-In many-body quantum systems, measurements on part of the system collapse the global wavefunction into a **projected ensemble**.
-
-A key question is whether the statistical behavior of a subsystem can be predicted from limited information about the environment.
-
-This project explores whether machine learning models can learn the relationship
-
-environment measurements → subsystem statistics
-
-and reproduce correct quantum observables through generated measurement data.
-
-The work connects machine learning with concepts from **quantum statistical mechanics and thermalization**.
-
----
-
-# Technologies Used
-
-- Python
-- PyTorch
-- GPU acceleration (CUDA)
-- Transformer architectures
-- Classical shadow tomography
-- Numerical physics simulations
+J. Yao and Y.-Z. You, *ShadowGPT: Learning to Solve Quantum Many-Body Problems from Randomized Measurements*, [arXiv:2411.03285](https://arxiv.org/abs/2411.03285) (2024).
 
 ---
 
-# Applications
-
-This project illustrates how machine learning can be applied to physics-based simulation problems, including:
-
-- learning statistical behavior of complex physical systems
-- generative modeling for measurement data
-- surrogate modeling of physics simulations
-- data-driven reconstruction of physical observables
-
-These ideas are broadly relevant to **computational physics, simulation science, and machine learning for physical systems**.
-
----
-
-# Author
-
-Rui-An Chang  
-Ph.D. Candidate in Physics  
-University of Texas at Austin
-
-Research interests: computational physics, machine learning for physical systems, and large-scale numerical simulation.
+**Project by Rui-An Chang** · Quantum information, generative modeling, and computational physics.
