@@ -88,10 +88,10 @@ $$
 
 The final notebook evaluates the **trace-norm discrepancy** from the maximally mixed two-qubit state, which is the **first moment of the Haar ensemble**:
 
-$$
+```math
 D(M)=\frac{1}{2}\left\|\bar\rho_M-\frac{I_4}{4}\right\|_1,
 \qquad \|X\|_1=\operatorname{Tr}\sqrt{X^\dagger X}.
-$$
+```
 
 ### Numerical result
 
